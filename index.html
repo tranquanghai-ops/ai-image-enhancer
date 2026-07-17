@@ -65,8 +65,11 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // Điền Client ID chính thức của anh Hải
         const HARDCODED_CLIENT_ID = "1091667798732-1tjra4rm4ikf2u6c1upavnd6ot5qasld.apps.googleusercontent.com";
-        const REQUESTED_SCOPES = "https://www.googleapis.com/auth/generative-language https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
+        
+        // Cấu hình danh sách Scope chi tiết đã được anh add thành công trên GCP
+        const REQUESTED_SCOPES = "https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/generative-language.tuning https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
 
         function App() {
             // imagesList: array of image objects with key details
@@ -643,6 +646,7 @@
                     return img;
                 }));
 
+                // Nếu đang dùng chế độ Demo Offline hoặc chưa đăng nhập
                 if (isDemoMode || !googleUser) {
                     await new Promise(res => setTimeout(res, 3000));
                     
@@ -849,6 +853,70 @@
                 setIsBatchProcessing(false);
             };
 
+            const saveProgressJSON = () => {
+                try {
+                    const progressData = {
+                        imagesList,
+                        activeImageId,
+                        historyList,
+                        activeTools,
+                        expandDirections,
+                        aspectRatio,
+                        upscaleOption,
+                        customPrompt,
+                        moodboardImages,
+                        crossRefImages
+                    };
+                    
+                    const blob = new Blob([JSON.stringify(progressData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `AI_Enhancer_Progress_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+                } catch (err) {
+                    console.error("Lỗi xuất tệp JSON:", err);
+                    setError("Không thể lưu tiến trình: " + err.message);
+                }
+            };
+
+            const loadProgressJSON = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if (!parsed || typeof parsed !== 'object') {
+                            throw new Error("Dữ liệu tệp JSON không hợp lệ.");
+                        }
+
+                        if (Array.isArray(parsed.imagesList)) setImagesList(parsed.imagesList);
+                        if (parsed.activeImageId) setActiveImageId(parsed.activeImageId);
+                        if (Array.isArray(parsed.historyList)) setHistoryList(parsed.historyList);
+                        if (Array.isArray(parsed.activeTools)) setActiveTools(parsed.activeTools);
+                        if (Array.isArray(parsed.expandDirections)) setExpandDirections(parsed.expandDirections);
+                        if (parsed.aspectRatio) setAspectRatio(parsed.aspectRatio);
+                        if (parsed.upscaleOption) setUpscaleOption(parsed.upscaleOption);
+                        if (parsed.customPrompt !== undefined) setCustomPrompt(parsed.customPrompt);
+                        if (Array.isArray(parsed.moodboardImages)) setMoodboardImages(parsed.moodboardImages);
+                        if (Array.isArray(parsed.crossRefImages)) setCrossRefImages(parsed.crossRefImages);
+
+                        setZoomScale(1);
+                        setPanOffset({ x: 0, y: 0 });
+                        setError('');
+                    } catch (err) {
+                        console.error("Lỗi đọc tệp JSON:", err);
+                        setError("Lỗi nạp tệp tiến trình.");
+                    }
+                };
+                reader.readAsText(file);
+            };
+
             const downloadResult = async () => {
                 const activeImg = imagesList.find(img => img.id === activeImageId);
                 if (!activeImg || !activeImg.result) return;
@@ -1027,7 +1095,7 @@
                         </div>
                     </header>
 
-                    {/* --- STREAMING_CHUNK: Giao diện Đăng nhập Google và Cấp quyền OAuth --- */}
+                    {/* Google OAuth & Cloud Sync UI section */}
                     <div className="bg-slate-900/40 border-b border-slate-800/80 py-2">
                         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 text-xs">
                             
@@ -1122,11 +1190,11 @@
                         </div>
                     </div>
 
-                    {/* --- STREAMING_CHUNK: Giao diện chính của ứng dụng --- */}
+                    {/* --- STREAMING_CHUNK: Thể hiện khu vực tải hình hoặc chỉnh sửa --- */}
                     <main className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full flex-1">
                         
                         {error && (
-                            <div className="mb-4 bg-red-500/10 border border-red-500/50 rounded-xl p-3 flex items-start gap-2.5 text-red-400 text-xs animate-pulse">
+                            <div className="mb-4 bg-red-500/10 border border-red-500/50 rounded-xl p-3 flex items-start gap-2.5 text-red-400 text-xs">
                                 <i className="fa-solid fa-circle-exclamation shrink-0 mt-0.5 text-red-500"></i>
                                 <div>
                                     <h3 className="font-semibold text-red-300">Lỗi hệ thống</h3>
@@ -1327,6 +1395,7 @@
                                                 </div>
                                             )}
 
+                                            {/* Bảng hiện lỗi trực quan để dễ dàng cấu hình và debug */}
                                             {activeImage?.error && (
                                                 <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
                                                     <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
