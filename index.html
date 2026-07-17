@@ -65,6 +65,9 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // --- ĐÂY LÀ MÃ CLIENT ID CỦA BẠN ĐÃ ĐƯỢC ĐIỀN CHÍNH XÁC ---
+        const HARDCODED_CLIENT_ID = "1091667798732-1tjra4rm4ikf2u6c1upavnd6ot5qasld.apps.googleusercontent.com";
+
         function App() {
             // --- Quản lý Danh sách Hình ảnh ---
             // Mỗi phần tử: { id, name, url, base64, mimeType, width, height, result, isProcessing, error, activeTools, upscaleOption, expandDirections, aspectRatio, customPrompt, moodboardImages, crossRefImages }
