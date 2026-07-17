@@ -61,7 +61,7 @@
     <!-- Google Identity Services (Xử lý Đăng nhập OAuth 2.0) -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <!-- Kịch bản lập trình chính bằng React + JSX thông qua Babel -->
+    <!-- Kịch bản kịch bản lập trình chính bằng React + JSX thông qua Babel -->
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
@@ -69,19 +69,20 @@
         const REQUESTED_SCOPES = "https://www.googleapis.com/auth/generative-language https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
 
         function App() {
+            // imagesList: array of image objects with key details
             const [imagesList, setImagesList] = useState([]);
             const [activeImageId, setActiveImageId] = useState(null);
             
             const [isProcessing, setIsProcessing] = useState(false);
             const [isBatchProcessing, setIsBatchProcessing] = useState(false);
             
-            const [activeTools, setActiveTools] = useState(['enhance', 'cleanup']);
-            const [expandDirections, setExpandDirections] = useState(['up', 'down', 'left', 'right']);
-            const [aspectRatio, setAspectRatio] = useState('current'); 
-            const [upscaleOption, setUpscaleOption] = useState('original');
+            const [activeTools, setActiveTools] = useState(['enhance', 'cleanup']); // Default activates clean as well
+            const [expandDirections, setExpandDirections] = useState(['up', 'down', 'left', 'right']); // Default: All directions selected
+            const [aspectRatio, setAspectRatio] = useState('current'); // Default set to 'current'
+            const [upscaleOption, setUpscaleOption] = useState('original'); // Default size set to original
             const [customPrompt, setCustomPrompt] = useState('');
             const [error, setError] = useState('');
-            const [viewMode, setViewMode] = useState('split');
+            const [viewMode, setViewMode] = useState('split'); 
             
             const [sliderPosition, setSliderPosition] = useState(50);
             const [zoomScale, setZoomScale] = useState(1);
@@ -93,7 +94,7 @@
             // Panning/dragging state for zoomed image view
             const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
             const [isPanning, setIsPanning] = useState(false);
-            const [panMode, setPanMode] = useState(false);
+            const [panMode, setPanMode] = useState(false); // Toggle pan interaction
             const panStart = useRef({ x: 0, y: 0 });
 
             // Custom confirmation modal state
@@ -141,13 +142,14 @@
                 return () => clearInterval(checkGis);
             }, []);
 
+            // Nút dọn sạch toàn bộ dữ liệu ứng dụng về rỗng hoàn toàn
             const askClearAllData = () => {
                 setDeleteConfirm({ show: true, type: 'clear_all', id: null });
             };
 
             const handleGoogleSignIn = () => {
                 if (!window.google?.accounts?.oauth2) {
-                    setError("Không thể nạp thư viện xác thực Google. Hãy đảm bảo bạn đang mở trang trên một môi trường mạng chính thức.");
+                    setError("Không thể nạp thư viện xác thực Google. Hãy mở ứng dụng bằng chế độ ẩn danh hoặc trên tab mới.");
                     return;
                 }
                 setError('');
@@ -911,68 +913,6 @@
                 }
             };
 
-            const saveProgressJSON = () => {
-                try {
-                    const progressData = {
-                        imagesList,
-                        activeImageId,
-                        historyList,
-                        activeTools,
-                        expandDirections,
-                        aspectRatio,
-                        upscaleOption,
-                        customPrompt,
-                        moodboardImages,
-                        crossRefImages
-                    };
-                    
-                    const blob = new Blob([JSON.stringify(progressData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `AI_Enhancer_Progress_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(url), 100);
-                } catch (err) {
-                    setError("Không thể lưu tiến trình: " + err.message);
-                }
-            };
-
-            const loadProgressJSON = (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const parsed = JSON.parse(event.target.result);
-                        if (!parsed || typeof parsed !== 'object') {
-                            throw new Error("Dữ liệu tệp JSON không hợp lệ.");
-                        }
-
-                        if (Array.isArray(parsed.imagesList)) setImagesList(parsed.imagesList);
-                        if (parsed.activeImageId) setActiveImageId(parsed.activeImageId);
-                        if (Array.isArray(parsed.historyList)) setHistoryList(parsed.historyList);
-                        if (Array.isArray(parsed.activeTools)) setActiveTools(parsed.activeTools);
-                        if (Array.isArray(parsed.expandDirections)) setExpandDirections(parsed.expandDirections);
-                        if (parsed.aspectRatio) setAspectRatio(parsed.aspectRatio);
-                        if (parsed.upscaleOption) setUpscaleOption(parsed.upscaleOption);
-                        if (parsed.customPrompt !== undefined) setCustomPrompt(parsed.customPrompt);
-                        if (Array.isArray(parsed.moodboardImages)) setMoodboardImages(parsed.moodboardImages);
-                        if (Array.isArray(parsed.crossRefImages)) setCrossRefImages(parsed.crossRefImages);
-
-                        setZoomScale(1);
-                        setPanOffset({ x: 0, y: 0 });
-                        setError('');
-                    } catch (err) {
-                        setError("Lỗi nạp tệp tiến trình. Đảm bảo đây là tệp JSON hợp lệ.");
-                    }
-                };
-                reader.readAsText(file);
-            };
-
             const loadHistoryItem = (item) => {
                 setImagesList(prev => {
                     const exists = prev.some(img => img.id === item.original.id);
@@ -1074,7 +1014,7 @@
                                     title="Mở tệp JSON đã lưu để tiếp tục làm việc"
                                 >
                                     <i className="fa-solid fa-folder-open"></i>
-                                    <span class="hidden sm:inline">Nạp tiến trình</span>
+                                    <span className="hidden sm:inline">Nạp tiến trình</span>
                                 </button>
                                 <input
                                     type="file"
@@ -1387,7 +1327,6 @@
                                                 </div>
                                             )}
 
-                                            {}
                                             {activeImage?.error && (
                                                 <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
                                                     <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
@@ -1562,7 +1501,7 @@
                                                             Tỉ Lệ Hiện Tại (Mặc định)
                                                         </button>
                                                     </div>
-                                                    <div class="grid grid-cols-4 gap-1">
+                                                    <div className="grid grid-cols-4 gap-1">
                                                         {['1:1', '16:9', '9:16', '4:3'].map(r => (
                                                             <button
                                                                 key={r}
@@ -1737,7 +1676,7 @@
                                     <i className="fa-solid fa-trash text-lg"></i>
                                 </div>
                                 <h3 className="text-sm font-bold text-white mb-1.5">
-                                    {deleteConfirm.type === 'clear_all' ? 'Xác nhận xóa sạch dữ liệu' : 'Xác nhận xóa hình'}
+                                    {deleteConfirm.type === 'clear_all' ? 'Xác nhận dọn sạch ứng dụng' : 'Xác nhận xóa hình'}
                                 </h3>
                                 <p className="text-xs text-slate-400 mb-4 leading-normal">
                                     {deleteConfirm.type === 'clear_all'
