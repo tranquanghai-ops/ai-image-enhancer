@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Enhancer Image - Ứng dụng AI Hình ảnh</title>
+    <title>AI Enhancer Image - ứng dụng AI hình ảnh</title>
     
     <!-- Tailwind CSS để tạo kiểu giao diện cực đẹp -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -66,25 +66,23 @@
         const { useState, useEffect, useRef } = React;
 
         const HARDCODED_CLIENT_ID = "1091667798732-1tjra4rm4ikf2u6c1upavnd6ot5qasld.apps.googleusercontent.com";
+        const REQUESTED_SCOPES = "https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
 
         function App() {
-            // --- Quản lý Danh sách Hình ảnh ---
             const [imagesList, setImagesList] = useState([]);
             const [activeImageId, setActiveImageId] = useState(null);
             
             const [isProcessing, setIsProcessing] = useState(false);
             const [isBatchProcessing, setIsBatchProcessing] = useState(false);
             
-            // --- Các cấu hình điều khiển cục bộ ---
             const [activeTools, setActiveTools] = useState(['enhance', 'cleanup']);
             const [expandDirections, setExpandDirections] = useState(['up', 'down', 'left', 'right']);
-            const [aspectRatio, setAspectRatio] = useState('1:1'); 
+            const [aspectRatio, setAspectRatio] = useState('current'); 
             const [upscaleOption, setUpscaleOption] = useState('original');
             const [customPrompt, setCustomPrompt] = useState('');
             const [error, setError] = useState('');
-            const [viewMode, setViewMode] = useState('split'); // 'split' | 'original' | 'result'
+            const [viewMode, setViewMode] = useState('split');
             
-            // --- Các trạng thái thao tác tương tác ---
             const [sliderPosition, setSliderPosition] = useState(50);
             const [zoomScale, setZoomScale] = useState(1);
             const [historyList, setHistoryList] = useState([]); 
@@ -92,26 +90,29 @@
             const [moodboardImages, setMoodboardImages] = useState([]); 
             const [crossRefImages, setCrossRefImages] = useState([]); 
 
-            // --- Các liên kết Ref để mở tệp ẩn ---
+            // Panning/dragging state for zoomed image view
+            const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+            const [isPanning, setIsPanning] = useState(false);
+            const [panMode, setPanMode] = useState(false);
+            const panStart = useRef({ x: 0, y: 0 });
+
+            // Custom confirmation modal state
+            const [deleteConfirm, setDeleteConfirm] = useState({ show: false, type: null, id: null });
+
             const fileInputRef = useRef(null);
+            const jsonInputRef = useRef(null);
             const moodboardInputRef = useRef(null);
             const crossRefInputRef = useRef(null);
+            
             const isCancelBatchRef = useRef(false);
 
-            // --- Trạng thái Đăng nhập Google & Đồng bộ đám mây ---
+            // --- Quản lý Trạng thái Đăng nhập Google & Đồng bộ đám mây ---
             const [gisLoaded, setGisLoaded] = useState(false);
             const [googleUser, setGoogleUser] = useState(null); // { name, email, picture, accessToken }
-            const [googleClientId, setGoogleClientId] = useState(() => {
-                return localStorage.getItem('ai_enhancer_google_client_id') || HARDCODED_CLIENT_ID;
-            });
-            const [showConfig, setShowConfig] = useState(false);
             const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
             const [driveFileId, setDriveFileId] = useState(null);
-            
-            // Chế độ demo không cần cấu hình Client ID
             const [isDemoMode, setIsDemoMode] = useState(false);
 
-            // Theo dõi khi nào SDK của Google sẵn sàng hoạt động
             useEffect(() => {
                 const checkGis = setInterval(() => {
                     if (window.google && window.google.accounts && window.google.accounts.oauth2) {
@@ -120,7 +121,7 @@
                     }
                 }, 500);
 
-                // Khôi phục dữ liệu cục bộ dự phòng (nếu có trong LocalStorage)
+                // Khôi phục dữ liệu cục bộ dự phòng (nếu có)
                 const localState = localStorage.getItem('ai_enhancer_local_backup');
                 if (localState) {
                     try {
@@ -140,34 +141,17 @@
                 return () => clearInterval(checkGis);
             }, []);
 
-            // Xem và lưu trữ Local Google Client ID
-            const handleSaveClientId = (id) => {
-                const trimmed = id.trim();
-                setGoogleClientId(trimmed);
-                localStorage.setItem('ai_enhancer_google_client_id', trimmed);
-                setShowConfig(false);
-                setError('');
-            };
-
             const handleGoogleSignIn = () => {
                 if (!window.google?.accounts?.oauth2) {
-                    setError("Không thể nạp thư viện xác thực Google. Hãy thử mở trang trên trình duyệt chính thức thay vì khung xem thử.");
-                    return;
-                }
-
-                const activeClientId = googleClientId || HARDCODED_CLIENT_ID;
-                if (!activeClientId) {
-                    setShowConfig(true);
-                    setError("Vui lòng thiết lập Google Client ID trước khi đăng nhập.");
+                    setError("Không thể nạp thư viện xác thực Google. Hãy đảm bảo bạn đang mở trang trên một môi trường mạng chính thức.");
                     return;
                 }
                 setError('');
 
                 try {
                     const client = window.google.accounts.oauth2.initTokenClient({
-                        client_id: activeClientId,
-                        // ĐÃ SỬA: Cập nhật quyền sang .retriever để khớp hoàn toàn với cấu hình Google Cloud của bạn
-                        scope: 'https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                        client_id: HARDCODED_CLIENT_ID,
+                        scope: REQUESTED_SCOPES,
                         callback: async (tokenResponse) => {
                             if (tokenResponse.error) {
                                 setError(`Đăng nhập thất bại: ${tokenResponse.error_description || tokenResponse.error}`);
@@ -190,17 +174,17 @@
                                 setGoogleUser(userObj);
                                 setIsDemoMode(false);
                                 
-                                // Tải tự động phiên lưu trữ từ Google Drive của khách
+                                // Tải tự động dữ liệu từ Google Drive của bạn
                                 loadSessionFromDrive(tokenResponse.access_token);
                             } catch (profileErr) {
-                                setError("Liên kết đăng nhập thành công nhưng không lấy được thông số cá nhân.");
+                                setError("Đăng nhập thành công nhưng không tìm thấy thông tin profile.");
                             }
                         },
                     });
                     client.requestAccessToken({ prompt: 'consent' });
                 } catch (err) {
                     console.error(err);
-                    setError("Gặp lỗi khi gọi cửa sổ đăng nhập Google. Hãy kiểm tra cấu hình.");
+                    setError("Gặp lỗi trong lúc gọi cửa sổ ủy quyền tài khoản Google.");
                 }
             };
 
@@ -302,7 +286,7 @@
                         setSyncStatus('error');
                     }
                 } catch (err) {
-                    console.error("Lỗi đồng bộ lưu trữ tệp tin:", err);
+                    console.error("Lỗi đồng bộ lưu trữ tệp:", err);
                     setSyncStatus('error');
                 }
             };
@@ -330,11 +314,12 @@
                     setActiveTools(img.activeTools || ['enhance']);
                     setUpscaleOption(img.upscaleOption || 'original');
                     setExpandDirections(img.expandDirections || ['up', 'down', 'left', 'right']);
-                    setAspectRatio(img.aspectRatio || '1:1');
+                    setAspectRatio(img.aspectRatio || 'current');
                     setCustomPrompt(img.customPrompt || '');
                     setMoodboardImages(img.moodboardImages || []);
                     setCrossRefImages(img.crossRefImages || []);
                     setZoomScale(1);
+                    setPanOffset({ x: 0, y: 0 });
                 }
             };
 
@@ -354,27 +339,34 @@
                 
                 const imgTools = img.activeTools || [];
                 const isExpand = imgTools.includes('expand');
-                const aspect = img.aspectRatio || '1:1';
+                const aspect = img.aspectRatio || 'current';
 
                 if (isExpand) {
-                    const parts = aspect.split(':');
-                    if (parts.length === 2) {
-                        const ratioW = parseFloat(parts[0]);
-                        const ratioH = parseFloat(parts[1]);
-                        const targetRatio = ratioW / ratioH;
-                        const currentRatio = w / h;
-
-                        if (currentRatio < targetRatio) {
-                            w = h * targetRatio;
-                        } else {
-                            h = w / targetRatio;
+                    let targetRatio = w / h;
+                    if (aspect !== 'current') {
+                        const parts = aspect.split(':');
+                        if (parts.length === 2) {
+                            const ratioW = parseFloat(parts[0]);
+                            const ratioH = parseFloat(parts[1]);
+                            targetRatio = ratioW / ratioH;
                         }
+                    }
+
+                    const currentRatio = w / h;
+                    if (currentRatio < targetRatio) {
+                        w = h * targetRatio;
+                    } else {
+                        h = w / targetRatio;
                     }
                 }
 
                 const option = img.upscaleOption || 'original';
 
                 switch (option) {
+                    case '0.5x':
+                        return { width: Math.round(w * 0.5), height: Math.round(h * 0.5) };
+                    case '0.75x':
+                        return { width: Math.round(w * 0.75), height: Math.round(h * 0.75) };
                     case '2x':
                         return { width: Math.round(w * 2), height: Math.round(h * 2) };
                     case '4x':
@@ -383,8 +375,12 @@
                         return { width: Math.round(w * 8), height: Math.round(h * 8) };
                     case 'fhd':
                         return { width: 1920, height: 1080 };
+                    case 'fhd_p':
+                        return { width: 1080, height: 1920 };
                     case '4k':
                         return { width: 3840, height: 2160 };
+                    case '4k_p':
+                        return { width: 2160, height: 3840 };
                     case 'original':
                     default:
                         return { width: Math.round(w), height: Math.round(h) };
@@ -430,7 +426,7 @@
                                 activeTools: ['enhance', 'cleanup'],
                                 upscaleOption: 'original',
                                 expandDirections: ['up', 'down', 'left', 'right'],
-                                aspectRatio: '1:1',
+                                aspectRatio: 'current',
                                 customPrompt: '',
                                 moodboardImages: [],
                                 crossRefImages: []
@@ -452,7 +448,7 @@
                             }
                         };
                         img.onerror = () => {
-                            setError('Không thể đọc dữ liệu khung hình.');
+                            setError('Không thể đọc dữ liệu kích thước khung hình.');
                         };
                         img.src = event.target.result;
                     };
@@ -460,8 +456,17 @@
                 });
             };
 
-            const deleteImage = (id, e) => {
+            const askDeleteImage = (id, e) => {
                 e.stopPropagation();
+                setDeleteConfirm({ show: true, type: 'queue', id });
+            };
+
+            const askDeleteHistory = (id, e) => {
+                e.stopPropagation();
+                setDeleteConfirm({ show: true, type: 'history', id });
+            };
+
+            const deleteImage = (id) => {
                 setImagesList(prev => {
                     const next = prev.filter(img => img.id !== id);
                     if (activeImageId === id) {
@@ -475,8 +480,7 @@
                 });
             };
 
-            const deleteHistoryItem = (id, e) => {
-                e.stopPropagation();
+            const deleteHistoryItem = (id) => {
                 setHistoryList(prev => prev.filter(item => item.id !== id));
             };
 
@@ -585,6 +589,45 @@
                 updateActiveImageProp('upscaleOption', value);
             };
 
+            const resizeImageToTarget = (srcBase64, targetW, targetH) => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = targetW;
+                        canvas.height = targetH;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) {
+                            reject(new Error("Không khởi tạo được bộ lọc Canvas 2D."));
+                            return;
+                        }
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                        resolve(canvas.toDataURL('image/png'));
+                    };
+                    img.onerror = () => reject(new Error("Lỗi tải tệp ảnh đầu ra."));
+                    img.src = srcBase64;
+                });
+            };
+
+            const fetchWithRetry = async (url, options, retries = 5) => {
+                const delays = [1000, 2000, 4000, 8000, 16000];
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (!response.ok) {
+                            const errText = await response.text();
+                            throw new Error(`HTTP Error ${response.status}: ${errText}`);
+                        }
+                        return await response.json();
+                    } catch (e) {
+                        if (i === retries - 1) throw e;
+                        await new Promise(res => setTimeout(res, delays[i]));
+                    }
+                }
+            };
+
             const processSingleImage = async (targetId) => {
                 const imgToProcess = imagesList.find(img => img.id === targetId);
                 if (!imgToProcess) return;
@@ -615,7 +658,7 @@
                     const demoResult = canvas.toDataURL('image/png');
                     setImagesList(prev => prev.map(img => {
                         if (img.id === targetId) {
-                            return { ...img, result: demoResult, isProcessing: false };
+                            return { ...img, result: demoResult, isProcessing: false, error: null };
                         }
                         return img;
                     }));
@@ -623,7 +666,6 @@
                 }
 
                 try {
-                    // Đã kích hoạt đầy đủ .retriever trên API
                     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent`;
 
                     const tDim = getDimensionsForImg(imgToProcess);
@@ -631,31 +673,52 @@
                     const imgTools = imgToProcess.activeTools || ['enhance'];
                     const imgUpscale = imgToProcess.upscaleOption || 'original';
                     const imgExpandDirs = imgToProcess.expandDirections || ['up', 'down', 'left', 'right'];
-                    const imgAspectRatio = imgToProcess.aspectRatio || '1:1';
+                    const imgAspect = imgToProcess.aspectRatio || 'current';
                     const imgPrompt = imgToProcess.customPrompt || '';
                     const imgMoodboards = imgToProcess.moodboardImages || [];
                     const imgCrossRefs = imgToProcess.crossRefImages || [];
 
                     if (!imgTools.includes('expand')) {
-                        instructions.push("CRITICAL REQUIREMENT: Do NOT outpaint, do NOT expand, do NOT crop, and do NOT add any new outer borders to the image. Keep the exact visual boundaries of the original.");
+                        instructions.push("CRITICAL REQUIREMENT: Do NOT outpaint, do NOT expand, do NOT crop, and do NOT add any new outer borders to the image. Keep the exact visual boundaries, composition, framing, and aspect ratio of the original image.");
                     }
                     if (imgTools.includes('enhance') || imgUpscale !== 'original') {
-                        instructions.push(`Enhance details, sharpen textures, remove noise/blur, and super-resolve this image. Make it extremely crisp and clean, optimized for upscaling to ${tDim.width}x${tDim.height} pixels.`);
+                        instructions.push(`Enhance details, sharpen textures, remove noise/blur, and super-resolve this image. Make it extremely crisp and clean, optimized for upscaling/downscaling to resolution (${tDim.width}x${tDim.height} pixels).`);
                     }
                     if (imgTools.includes('expand')) {
-                        instructions.push(`Outpaint and expand the borders of this image seamlessly towards directions: ${imgExpandDirs.join(', ')} to adapt into aspect ratio ${imgAspectRatio}.`);
+                        let directionText = "in all directions";
+                        if (imgExpandDirs.length === 4) {
+                            directionText = "in all directions (top, bottom, left, and right)";
+                        } else {
+                            const translatedDirs = imgExpandDirs.map(d => {
+                                if (d === 'up') return "upward (to the top)";
+                                if (d === 'down') return "downward (to the bottom)";
+                                if (d === 'left') return "to the left side";
+                                if (d === 'right') return "to the right side";
+                                return "";
+                            }).filter(Boolean);
+                            directionText = `towards the following directions: ${translatedDirs.join(', ')}`;
+                        }
+                        const aspectLabel = imgAspect === 'current' ? 'its current ratio' : `${imgAspect} aspect ratio`;
+                        instructions.push(`Outpaint and expand the borders of this image seamlessly ${directionText} to adapt into a beautiful layout matching the ${aspectLabel}.`);
                     }
                     if (imgTools.includes('cleanup')) {
-                        instructions.push("Remove any text, watermarks, symbols, icons, or unnecessary objects from this image.");
+                        instructions.push("Remove any text, watermarks, symbols, icons, or unnecessary objects from this image. Fill in the background seamlessly and naturally.");
                     }
                     if (imgTools.includes('restore')) {
-                        instructions.push("Perform advanced old photo restoration: repair scratches, remove vintage grain, and optimize contrast.");
+                        instructions.push("Perform advanced old photo restoration: repair scratches, remove vintage grain, recover faded colors, and optimize contrast.");
                     }
                     if (imgTools.includes('sketch')) {
-                        instructions.push("Convert this sketch or line drawing into a photorealistic architectural render.");
+                        let sketchPrompt = "Convert this sketch or line drawing into a photorealistic modern architectural or spatial render with rich professional materials, beautiful dramatic environment lighting, and natural shadows.";
+                        if (imgMoodboards.length > 0) {
+                            sketchPrompt += " Integrate the style, material textures, colors, and interior design theme from the provided moodboard reference images.";
+                        }
+                        if (imgCrossRefs.length > 0) {
+                            sketchPrompt += " Crucially, cross-reference the details, layout, and structural features of the same space from the provided reference images. Maintain maximum spatial accuracy based on those reference images without altering the camera perspective and overall structural orientation of the main sketch.";
+                        }
+                        instructions.push(sketchPrompt);
                     }
                     if (imgTools.includes('beautify')) {
-                        instructions.push("Apply studio-quality portrait retouching: smoothly refine skin texture naturally.");
+                        instructions.push("Apply studio-quality portrait retouching: smoothly refine skin texture naturally, eliminate skin blemishes, enhance eyes contrast, optimize ambient lighting, and highlight facial aesthetics elegantly.");
                     }
 
                     let finalPrompt = "Please perform the following operations on the provided image:\n" + instructions.map(i => "- " + i).join("\n");
@@ -670,12 +733,12 @@
                     ];
 
                     imgMoodboards.forEach((mb, idx) => {
-                        payloadParts.push({ text: `[Moodboard reference ${idx + 1}]` });
+                        payloadParts.push({ text: `[Moodboard reference image ${idx + 1} for design theme & colors]` });
                         payloadParts.push({ inlineData: { mimeType: mb.mimeType, data: mb.base64.split(',')[1] } });
                     });
 
                     imgCrossRefs.forEach((cr, idx) => {
-                        payloadParts.push({ text: `[Spatial reference ${idx + 1}]` });
+                        payloadParts.push({ text: `[Spatial cross-reference angle image ${idx + 1} of the same space]` });
                         payloadParts.push({ inlineData: { mimeType: cr.mimeType, data: cr.base64.split(',')[1] } });
                     });
 
@@ -684,7 +747,7 @@
                         generationConfig: { responseModalities: ["IMAGE"] }
                     };
 
-                    const resultRes = await fetch(endpoint, {
+                    const result = await fetchWithRetry(endpoint, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -693,12 +756,6 @@
                         body: JSON.stringify(payload)
                     });
 
-                    if (!resultRes.ok) {
-                        const errText = await resultRes.text();
-                        throw new Error(`Google API returned error ${resultRes.status}: ${errText}`);
-                    }
-
-                    const result = await resultRes.json();
                     const responseParts = result.candidates?.[0]?.content?.parts;
                     const imagePart = responseParts?.find(p => p.inlineData);
                     
@@ -724,7 +781,7 @@
                         };
                         setHistoryList(prev => [newHistoryItem, ...prev]);
                     } else {
-                        throw new Error("Không nhận được dữ liệu ảnh trả về từ Google Gemini.");
+                        throw new Error("Không tìm thấy dữ liệu ảnh nâng cấp trả về từ máy chủ.");
                     }
 
                 } catch (err) {
@@ -743,7 +800,7 @@
                 try {
                     await processSingleImage(activeImageId);
                 } catch (err) {
-                    setError("Gặp gián đoạn trong lúc xử lý ảnh.");
+                    setError("Gặp gián đoạn trong lúc xử lý ảnh đơn.");
                 } finally {
                     setIsProcessing(false);
                 }
@@ -775,7 +832,7 @@
                         }
                     }
                 } catch (err) {
-                    setError("Có lỗi phát sinh trong hàng chờ.");
+                    setError("Có lỗi phát sinh trong hàng chờ xử lý.");
                 } finally {
                     setIsBatchProcessing(false);
                 }
@@ -850,6 +907,68 @@
                 }
             };
 
+            const saveProgressJSON = () => {
+                try {
+                    const progressData = {
+                        imagesList,
+                        activeImageId,
+                        historyList,
+                        activeTools,
+                        expandDirections,
+                        aspectRatio,
+                        upscaleOption,
+                        customPrompt,
+                        moodboardImages,
+                        crossRefImages
+                    };
+                    
+                    const blob = new Blob([JSON.stringify(progressData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `AI_Enhancer_Progress_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+                } catch (err) {
+                    setError("Không thể lưu tiến trình: " + err.message);
+                }
+            };
+
+            const loadProgressJSON = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if (!parsed || typeof parsed !== 'object') {
+                            throw new Error("Dữ liệu tệp JSON không hợp lệ.");
+                        }
+
+                        if (Array.isArray(parsed.imagesList)) setImagesList(parsed.imagesList);
+                        if (parsed.activeImageId) setActiveImageId(parsed.activeImageId);
+                        if (Array.isArray(parsed.historyList)) setHistoryList(parsed.historyList);
+                        if (Array.isArray(parsed.activeTools)) setActiveTools(parsed.activeTools);
+                        if (Array.isArray(parsed.expandDirections)) setExpandDirections(parsed.expandDirections);
+                        if (parsed.aspectRatio) setAspectRatio(parsed.aspectRatio);
+                        if (parsed.upscaleOption) setUpscaleOption(parsed.upscaleOption);
+                        if (parsed.customPrompt !== undefined) setCustomPrompt(parsed.customPrompt);
+                        if (Array.isArray(parsed.moodboardImages)) setMoodboardImages(parsed.moodboardImages);
+                        if (Array.isArray(parsed.crossRefImages)) setCrossRefImages(parsed.crossRefImages);
+
+                        setZoomScale(1);
+                        setPanOffset({ x: 0, y: 0 });
+                        setError('');
+                    } catch (err) {
+                        setError("Lỗi nạp tệp tiến trình. Đảm bảo đây là tệp JSON hợp lệ.");
+                    }
+                };
+                reader.readAsText(file);
+            };
+
             const loadHistoryItem = (item) => {
                 setImagesList(prev => {
                     const exists = prev.some(img => img.id === item.original.id);
@@ -870,11 +989,40 @@
                     setActiveTools(item.activeTools);
                     setUpscaleOption(item.upscaleOption);
                     setExpandDirections(item.original.expandDirections || ['up', 'down', 'left', 'right']);
-                    setAspectRatio(item.original.aspectRatio || '1:1');
+                    setAspectRatio(item.original.aspectRatio || 'current');
                     setViewMode('split');
                     setZoomScale(1);
+                    setPanOffset({ x: 0, y: 0 });
                     setError('');
                 }, 50);
+            };
+
+            const handlePointerDown = (e) => {
+                if (zoomScale <= 1) return;
+                if (viewMode === 'split' && !panMode) return;
+                
+                setIsPanning(true);
+                panStart.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+                e.currentTarget.setPointerCapture(e.pointerId);
+            };
+
+            const handlePointerMove = (e) => {
+                if (!isPanning || zoomScale <= 1) return;
+                const newX = e.clientX - panStart.current.x;
+                const newY = e.clientY - panStart.current.y;
+                setPanOffset({ x: newX, y: newY });
+            };
+
+            const handlePointerUp = (e) => {
+                setIsPanning(false);
+                try {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                } catch (err) {}
+            };
+
+            const resetZoomAndPan = () => {
+                setZoomScale(1);
+                setPanOffset({ x: 0, y: 0 });
             };
 
             const activeImage = imagesList.find(img => img.id === activeImageId);
@@ -895,53 +1043,39 @@
                                     <h1 className="text-sm sm:text-base font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
                                         AI Enhancer Image
                                     </h1>
-                                    <p className="text-[10px] text-slate-500 font-medium tracking-wide">ứng dụng AI hình ảnh:</p>
+                                    <p className="text-[10px] text-slate-500 font-medium tracking-wide">SIÊU PHÂN GIẢI & PHỤC HỒI CHI TIẾT</p>
                                 </div>
                             </div>
-                            
-                            <button 
-                                onClick={() => setShowConfig(!showConfig)}
-                                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-all flex items-center gap-1.5 text-xs"
-                            >
-                                <i className="fa-solid fa-gear"></i>
-                                <span className="hidden sm:inline">Cấu hình Client ID</span>
-                            </button>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={saveProgressJSON}
+                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
+                                    title="Lưu toàn bộ tiến trình hiện tại thành tệp JSON"
+                                >
+                                    <i className="fa-solid fa-floppy-disk"></i>
+                                    <span className="hidden sm:inline">Lưu tiến trình</span>
+                                </button>
+                                <button
+                                    onClick={() => jsonInputRef.current?.click()}
+                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
+                                    title="Mở tệp JSON đã lưu để tiếp tục làm việc"
+                                >
+                                    <i className="fa-solid fa-folder-open"></i>
+                                    <span class="hidden sm:inline">Nạp tiến trình</span>
+                                </button>
+                                <input
+                                    type="file"
+                                    ref={jsonInputRef}
+                                    onChange={loadProgressJSON}
+                                    accept=".json"
+                                    className="hidden"
+                                />
+                            </div>
                         </div>
                     </header>
 
-                    {/* API Config Dropdown */}
-                    {showConfig && (
-                        <div className="bg-slate-900 border-b border-slate-800 p-4 max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="max-w-xl">
-                                <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                                    <i className="fa-solid fa-key text-indigo-400"></i> Cấu hình Google Client ID riêng
-                                </h3>
-                                <p className="text-[10px] text-slate-400 mb-3 leading-relaxed">
-                                    Bạn có thể thay thế bằng Google Client ID của dự án cá nhân bạn tại đây (lấy từ Google Cloud Platform).
-                                </p>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        defaultValue={googleClientId}
-                                        placeholder="Nhập mã client ID dạng xxx.apps.googleusercontent.com"
-                                        id="google_client_id_input"
-                                        className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                    />
-                                    <button 
-                                        onClick={() => {
-                                            const val = document.getElementById('google_client_id_input')?.value;
-                                            handleSaveClientId(val || '');
-                                        }}
-                                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-all shrink-0"
-                                    >
-                                        Lưu ID
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Thanh đăng nhập đồng bộ */}
+                    {/* --- STREAMING_CHUNK: Giao diện Đăng nhập Google và Cấp quyền OAuth --- */}
                     <div className="bg-slate-900/40 border-b border-slate-800/80 py-2">
                         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 text-xs">
                             
@@ -959,7 +1093,7 @@
                                 ) : (
                                     <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
                                         <i className="fa-solid fa-cloud text-slate-500"></i>
-                                        <span>Hãy đăng nhập tài khoản Google để tự trả phí và sử dụng hạn mức Gemini và lưu trữ Drive riêng hoàn toàn miễn phí.</span>
+                                        <span>Hãy đăng nhập tài khoản Google để tự cấp quyền sử dụng hạn mức Gemini cá nhân miễn phí.</span>
                                     </div>
                                 )}
                             </div>
@@ -971,13 +1105,13 @@
                                             {syncStatus === 'syncing' && (
                                                 <>
                                                     <i className="fa-solid fa-circle-notch animate-spin text-indigo-400"></i>
-                                                    <span>Đang sao lưu...</span>
+                                                    <span>Đang sao lưu Drive...</span>
                                                 </>
                                             )}
                                             {syncStatus === 'synced' && (
                                                 <>
                                                     <i className="fa-solid fa-cloud-arrow-up text-emerald-400"></i>
-                                                    <span className="text-emerald-400">Đã lưu trữ đám mây</span>
+                                                    <span className="text-emerald-400">Đã lưu Drive</span>
                                                 </>
                                             )}
                                             {syncStatus === 'idle' && (
@@ -1024,10 +1158,10 @@
                                         </button>
                                         <button 
                                             onClick={handleGoogleSignIn}
-                                            className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-1.5 rounded-lg shadow-lg transition-all active:scale-[0.98]"
+                                            className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-1.5 rounded-lg shadow-lg shadow-indigo-600/15 transition-all active:scale-[0.98]"
                                         >
                                             <i className="fa-brands fa-google"></i>
-                                            <span>Đăng nhập bằng Google</span>
+                                            <span>Đăng nhập Google Drive</span>
                                         </button>
                                     </div>
                                 )}
@@ -1036,12 +1170,12 @@
                         </div>
                     </div>
 
-                    {/* Thân chính ứng dụng */}
+                    {/* --- STREAMING_CHUNK: Giao diện chính của ứng dụng --- */}
                     <main className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full flex-1">
                         
                         {error && (
-                            <div className="mb-4 bg-red-500/10 border border-red-500/50 rounded-xl p-3 flex items-start gap-2.5 text-red-400 text-xs">
-                                <i className="fa-solid fa-circle-exclamation shrink-0 mt-0.5"></i>
+                            <div className="mb-4 bg-red-500/10 border border-red-500/50 rounded-xl p-3 flex items-start gap-2.5 text-red-400 text-xs animate-pulse">
+                                <i className="fa-solid fa-circle-exclamation shrink-0 mt-0.5 text-red-500"></i>
                                 <div>
                                     <h3 className="font-semibold text-red-300">Lỗi hệ thống</h3>
                                     <p>{error}</p>
@@ -1074,6 +1208,17 @@
                                         className="hidden" 
                                     />
                                 </div>
+
+                                <div className="mt-6 flex flex-col items-center p-4 rounded-xl border border-slate-900 bg-slate-900/10">
+                                    <p className="text-xs text-slate-500 mb-2.5">Hoặc bạn muốn mở tiếp tiến trình đã làm trước đó?</p>
+                                    <button
+                                        onClick={() => jsonInputRef.current?.click()}
+                                        className="flex items-center gap-2 text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-semibold px-4 py-2 rounded-lg transition-all"
+                                    >
+                                        <i className="fa-solid fa-folder-open"></i>
+                                        Mở tệp lưu tiến trình (.json)
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -1094,20 +1239,26 @@
                                             >
                                                 <img src={img.url} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
                                                 <button 
-                                                    onClick={(e) => deleteImage(img.id, e)}
+                                                    onClick={(e) => askDeleteImage(img.id, e)}
                                                     className="absolute top-0 right-0 bg-red-600/95 hover:bg-red-500 text-white p-0.5 rounded-bl-md opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-150 z-20"
+                                                    title="Xóa hình"
                                                 >
                                                     <i className="fa-solid fa-trash text-[8px]"></i>
                                                 </button>
 
                                                 {img.result && (
                                                     <div className="absolute bottom-0 right-0 bg-green-500 text-white p-0.5 rounded-tl-md">
-                                                        <i className="fa-solid fa-check text-[8px]"></i>
+                                                        <i className="fa-solid fa-circle-check text-[8px]"></i>
                                                     </div>
                                                 )}
                                                 {img.isProcessing && (
                                                     <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center">
                                                         <i className="fa-solid fa-circle-notch animate-spin text-indigo-400 text-xs"></i>
+                                                    </div>
+                                                )}
+                                                {img.error && (
+                                                    <div className="absolute inset-0 bg-red-950/60 flex items-center justify-center" title={img.error}>
+                                                        <i className="fa-solid fa-circle-exclamation text-red-400 text-xs"></i>
                                                     </div>
                                                 )}
                                             </div>
@@ -1129,7 +1280,7 @@
                                                 <button 
                                                     onClick={() => setViewMode('split')}
                                                     disabled={!activeImage?.result}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'split' && activeImage?.result ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'split' && activeImage?.result ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 disabled:opacity-50'}`}
                                                 >
                                                     So sánh trượt
                                                 </button>
@@ -1142,26 +1293,54 @@
                                                 <button 
                                                     onClick={() => setViewMode('result')}
                                                     disabled={!activeImage?.result}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'result' && activeImage?.result ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'result' && activeImage?.result ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 disabled:opacity-50'}`}
                                                 >
                                                     Kết quả
                                                 </button>
                                             </div>
 
-                                            {/* Zoom scale controller */}
-                                            <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
-                                                <button 
-                                                    onClick={() => setZoomScale(prev => Math.max(prev - 0.25, 0.5))}
-                                                    className="p-1 text-slate-400 hover:text-white"
+                                            {/* Toggle drag function */}
+                                            {zoomScale > 1 && (
+                                                <button
+                                                    onClick={() => setPanMode(!panMode)}
+                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md border flex items-center gap-1.5 transition-all ${
+                                                        panMode 
+                                                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400' 
+                                                            : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200'
+                                                    }`}
+                                                    title="Bật kéo rê ảnh khi zoom lớn"
                                                 >
-                                                    <i className="fa-solid fa-magnifying-glass-minus text-xs"></i>
+                                                    <i className="fa-solid fa-hand text-[10px]"></i>
+                                                    <span>Rê chuột: {panMode ? "BẬT" : "TẤT"}</span>
                                                 </button>
-                                                <span className="text-[10px] font-semibold px-1 min-w-[30px] text-center">{Math.round(zoomScale * 100)}%</span>
+                                            )}
+
+                                            {/* Zoom scale controller */}
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-between bg-slate-950 p-0.5 rounded-lg border border-slate-800 w-[105px]">
+                                                    <button 
+                                                        onClick={() => setZoomScale(prev => Math.max(prev - 0.25, 0.5))}
+                                                        disabled={zoomScale <= 0.5}
+                                                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                                                    >
+                                                        <i className="fa-solid fa-magnifying-glass-minus text-[10px]"></i>
+                                                    </button>
+                                                    <span className="text-[10px] font-semibold px-1 w-10 text-center text-slate-300">{Math.round(zoomScale * 100)}%</span>
+                                                    <button 
+                                                        onClick={() => setZoomScale(prev => Math.min(prev + 0.25, 3))}
+                                                        disabled={zoomScale >= 3}
+                                                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                                                    >
+                                                        <i className="fa-solid fa-magnifying-glass-plus text-[10px]"></i>
+                                                    </button>
+                                                </div>
+
                                                 <button 
-                                                    onClick={() => setZoomScale(prev => Math.min(prev + 0.25, 3))}
-                                                    className="p-1 text-slate-400 hover:text-white"
+                                                    onClick={resetZoomAndPan}
+                                                    style={{ visibility: zoomScale !== 1 ? 'visible' : 'hidden' }}
+                                                    className="text-[9px] bg-slate-950 hover:bg-slate-850 border border-slate-800 text-indigo-400 hover:text-indigo-300 font-semibold px-2 py-1 rounded transition-all"
                                                 >
-                                                    <i className="fa-solid fa-magnifying-glass-plus text-xs"></i>
+                                                    Reset 100%
                                                 </button>
                                             </div>
 
@@ -1176,19 +1355,34 @@
                                         </div>
 
                                         {/* Viewer Panel body */}
-                                        <div className="flex-1 relative bg-slate-950 flex items-center justify-center p-2 overflow-hidden h-full">
+                                        <div 
+                                            className={`flex-grow relative bg-slate-950 flex items-center justify-center p-2 overflow-hidden h-full ${
+                                                zoomScale > 1 && (viewMode !== 'split' || panMode) ? 'cursor-grab' : ''
+                                            }`}
+                                            onPointerDown={handlePointerDown}
+                                            onPointerMove={handlePointerMove}
+                                            onPointerUp={handlePointerUp}
+                                            onPointerLeave={handlePointerUp}
+                                        >
                                             {(isProcessing || activeImage?.isProcessing) && (
                                                 <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm">
                                                     <i className="fa-solid fa-circle-notch animate-spin text-indigo-500 text-3xl mb-3"></i>
                                                     <p className="text-sm font-medium text-white">AI đang phân tích & tái tạo chi tiết...</p>
-                                                    <p className="text-[10px] text-slate-400 mt-1">Hạn mức sẽ được trừ tự động vào tài khoản Google của bạn.</p>
+                                                    <p className="text-[10px] text-slate-400 mt-1">Mục tiêu: {targetDim.width} × {targetDim.height} px</p>
+                                                    <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-3 relative border border-slate-700/50">
+                                                        <div className="h-full w-2/5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-full animate-shimmer-loader"></div>
+                                                    </div>
                                                 </div>
                                             )}
 
-                                            <div className="w-full h-full flex items-center justify-center overflow-auto">
+                                            <div className="w-full h-full flex items-center justify-center overflow-hidden">
                                                 <div 
-                                                    className="relative transition-transform duration-150 w-full h-full flex items-center justify-center"
-                                                    style={{ transform: `scale(${zoomScale})` }}
+                                                    className="relative w-full h-full flex items-center justify-center select-none"
+                                                    style={{ 
+                                                        transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                                                        transformOrigin: 'center center',
+                                                        transition: isPanning ? 'none' : 'transform 150s ease-out',
+                                                    }}
                                                 >
                                                     {viewMode === 'split' && activeImage?.result ? (
                                                         <div className="relative w-full h-full rounded-xl overflow-hidden flex items-center justify-center select-none border border-slate-850">
@@ -1210,12 +1404,15 @@
                                                                 max="100" 
                                                                 value={sliderPosition} 
                                                                 onChange={(e) => setSliderPosition(Number(e.target.value))} 
-                                                                className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
+                                                                className={`absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20 ${panMode ? 'pointer-events-none' : ''}`}
                                                             />
                                                         </div>
                                                     ) : (
                                                         <div className="relative w-full h-full flex items-center justify-center">
-                                                            <img src={viewMode === 'result' && activeImage?.result ? activeImage.result : activeImage?.url} className="w-full h-full object-contain rounded-lg" />
+                                                            <span className="absolute top-1.5 left-1.5 z-10 bg-black/70 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded backdrop-blur-md">
+                                                                {viewMode === 'result' && activeImage?.result ? `Đầu Ra: ${targetDim.width} × ${targetDim.height}` : `Ảnh Gốc: ${activeImage?.width} × ${activeImage?.height}`}
+                                                            </span>
+                                                            <img src={viewMode === 'result' && activeImage?.result ? activeImage.result : activeImage?.url} className="w-full h-full object-contain rounded-lg pointer-events-none" />
                                                         </div>
                                                     )}
                                                 </div>
@@ -1238,7 +1435,7 @@
                                                     >
                                                         <img src={item.result} className="w-full h-12 object-cover opacity-75" />
                                                         <button 
-                                                            onClick={(e) => deleteHistoryItem(item.id, e)}
+                                                            onClick={(e) => askDeleteHistory(item.id, e)}
                                                             className="absolute top-0 right-0 bg-red-600 text-white p-0.5 rounded-bl-md opacity-0 group-hover:opacity-100 z-20"
                                                         >
                                                             <i className="fa-solid fa-trash text-[8px]"></i>
@@ -1258,7 +1455,7 @@
                                     {/* Output resolution selection */}
                                     <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                                         <h3 className="text-xs font-semibold flex items-center gap-1.5 text-white mb-2.5">
-                                            <i className="fa-solid fa-up-right-and-down-left-from-center text-indigo-400"></i> Kích Thước Đầu Ra
+                                            <i className="fa-solid fa-expand text-indigo-400"></i> Kích Thước Đầu Ra
                                         </h3>
                                         <select
                                             value={upscaleOption}
@@ -1266,11 +1463,15 @@
                                             className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                         >
                                             <option value="original">Giữ Nguyên Tỉ Lệ (Mặc định)</option>
+                                            <option value="0.5x">Giảm Một Nửa (0.5x - Dành cho ảnh lớn)</option>
+                                            <option value="0.75x">Giảm Nhẹ (0.75x - Dành cho ảnh lớn)</option>
                                             <option value="2x">Nhân Đôi (2x)</option>
                                             <option value="4x">Nhân Bốn (4x Ultra)</option>
                                             <option value="8x">Nhân Tám (8x Super HD)</option>
-                                            <option value="fhd">Full HD (1920 × 1080)</option>
-                                            <option value="4k">Chuẩn 4K UHD (3840 × 2160)</option>
+                                            <option value="fhd">Full HD Khung Ngang (1920 × 1080)</option>
+                                            <option value="fhd_p">Full HD Khung Đứng (1080 × 1920)</option>
+                                            <option value="4k">Chuẩn 4K UHD Khung Ngang (3840 × 2160)</option>
+                                            <option value="4k_p">Chuẩn 4K UHD Khung Đứng (2160 × 3840)</option>
                                         </select>
                                     </div>
 
@@ -1308,7 +1509,20 @@
                                             <div className="mb-3 p-2 bg-slate-950 rounded-xl border border-slate-850 space-y-2">
                                                 <div>
                                                     <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Tỉ Lệ Khung Hình Mới:</label>
-                                                    <div className="grid grid-cols-4 gap-1">
+                                                    <div className="mb-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAspectRatio('current');
+                                                                updateActiveImageProp('aspectRatio', 'current');
+                                                            }}
+                                                            className={`w-full py-1.5 px-2.5 rounded border text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1.5 ${aspectRatio === 'current' ? 'bg-indigo-500/15 border-indigo-500 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                                                        >
+                                                            <i className="fa-solid fa-image"></i>
+                                                            Tỉ Lệ Hiện Tại (Mặc định)
+                                                        </button>
+                                                    </div>
+                                                    <div class="grid grid-cols-4 gap-1">
                                                         {['1:1', '16:9', '9:16', '4:3'].map(r => (
                                                             <button
                                                                 key={r}
@@ -1321,6 +1535,35 @@
                                                                 {r}
                                                             </button>
                                                         ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Hướng Muốn Mở Rộng (Chọn đồng thời):</label>
+                                                    <div className="grid grid-cols-5 gap-1">
+                                                        {[
+                                                            { id: 'all', label: 'Tất cả', icon: 'fa-up-down-left-right' },
+                                                            { id: 'up', label: 'Lên trên', icon: 'fa-arrow-up' },
+                                                            { id: 'down', label: 'Xuống dưới', icon: 'fa-arrow-down' },
+                                                            { id: 'left', label: 'Sang trái', icon: 'fa-arrow-left' },
+                                                            { id: 'right', label: 'Sang phải', icon: 'fa-arrow-right' },
+                                                        ].map((dir) => {
+                                                            const isDirActive = dir.id === 'all' 
+                                                                ? ['up', 'down', 'left', 'right'].every(d => expandDirections.includes(d))
+                                                                : expandDirections.includes(dir.id);
+
+                                                            return (
+                                                                <button
+                                                                    key={dir.id}
+                                                                    type="button"
+                                                                    onClick={() => toggleExpandDirection(dir.id)}
+                                                                    className={`flex flex-col items-center justify-center p-1 rounded border text-[8px] font-medium transition-all ${isDirActive ? 'bg-indigo-500/10 border-indigo-500 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                                                                >
+                                                                    <i className={`fa-solid ${dir.icon} mb-1 text-[10px]`}></i>
+                                                                    <span className="truncate max-w-full text-[8px]">{dir.label.split(' ')[0]}</span>
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1353,6 +1596,32 @@
                                                         )}
                                                     </div>
                                                     <input type="file" ref={moodboardInputRef} onChange={handleMoodboardUpload} accept="image/*" multiple className="hidden" />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Ảnh Đối Chiếu Không Gian (Max 4)</label>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {crossRefImages.map(cr => (
+                                                            <div key={cr.id} className="relative w-10 h-10 rounded border border-slate-800 overflow-hidden group/thumb">
+                                                                <img src={cr.url} className="w-full h-full object-cover" />
+                                                                <button 
+                                                                    onClick={() => removeCrossRefImage(cr.id)}
+                                                                    className="absolute inset-0 bg-red-600/80 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center"
+                                                                >
+                                                                    <i className="fa-solid fa-trash text-white text-[10px]"></i>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        {crossRefImages.length < 4 && (
+                                                            <button 
+                                                                onClick={() => crossRefInputRef.current?.click()}
+                                                                className="w-10 h-10 border border-dashed border-slate-800 rounded flex items-center justify-center text-slate-500 hover:text-indigo-400 bg-slate-900"
+                                                            >
+                                                                <i className="fa-solid fa-plus text-[10px]"></i>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <input type="file" ref={crossRefInputRef} onChange={handleCrossRefUpload} accept="image/*" multiple className="hidden" />
                                                 </div>
                                             </div>
                                         )}
@@ -1420,32 +1689,47 @@
 
                     </main>
 
+                    {/* Hộp thoại xác nhận tùy chỉnh an toàn (Custom confirmation modal) */}
+                    {deleteConfirm.show && (
+                        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-5 shadow-2xl relative">
+                                <div className="text-red-500 bg-red-500/10 w-10 h-10 rounded-full flex items-center justify-center mb-3">
+                                    <i className="fa-solid fa-trash text-lg"></i>
+                                </div>
+                                <h3 className="text-sm font-bold text-white mb-1.5">Xác nhận xóa hình</h3>
+                                <p className="text-xs text-slate-400 mb-4 leading-normal">
+                                    {deleteConfirm.type === 'queue' 
+                                        ? 'Bạn có chắc chắn muốn xóa hình ảnh này khỏi hàng đợi? Tiến trình chưa làm cho hình này sẽ bị hủy.' 
+                                        : 'Bạn có chắc chắn muốn xóa bản ghi này khỏi lịch sử đã làm? Điều này không làm ảnh hưởng tới hàng đợi.'}
+                                </p>
+                                <div className="flex justify-end gap-2 text-xs font-semibold">
+                                    <button 
+                                        onClick={() => setDeleteConfirm({ show: false, type: null, id: null })}
+                                        className="px-4 py-2 text-slate-300 bg-slate-800 hover:bg-slate-750 rounded-lg transition-colors"
+                                    >
+                                        Hủy bỏ
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            if (deleteConfirm.type === 'queue') {
+                                                deleteImage(deleteConfirm.id);
+                                            } else if (deleteConfirm.type === 'history') {
+                                                deleteHistoryItem(deleteConfirm.id);
+                                            }
+                                            setDeleteConfirm({ show: false, type: null, id: null });
+                                        }}
+                                        className="px-4 py-2 text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                                    >
+                                        Đồng ý xóa
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             );
         }
-
-        // --- STREAMING_CHUNK: Trình nén ảnh xuất ra Canvas chất lượng cao ---
-        const resizeImageToTarget = (srcBase64, targetW, targetH) => {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = targetW;
-                    canvas.height = targetH;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) {
-                        reject(new Error("Không khởi tạo được bộ lọc Canvas 2D."));
-                        return;
-                    }
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'high';
-                    ctx.drawImage(img, 0, 0, targetW, targetH);
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                img.onerror = () => reject(new Error("Lỗi tải tệp ảnh đầu ra."));
-                img.src = srcBase64;
-            });
-        };
 
         // Render ứng dụng React hoàn chỉnh
         const root = ReactDOM.createRoot(document.getElementById('root'));
