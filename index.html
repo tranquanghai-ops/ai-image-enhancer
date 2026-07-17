@@ -141,6 +141,10 @@
                 return () => clearInterval(checkGis);
             }, []);
 
+            const askClearAllData = () => {
+                setDeleteConfirm({ show: true, type: 'clear_all', id: null });
+            };
+
             const handleGoogleSignIn = () => {
                 if (!window.google?.accounts?.oauth2) {
                     setError("Không thể nạp thư viện xác thực Google. Hãy đảm bảo bạn đang mở trang trên một môi trường mạng chính thức.");
@@ -1049,6 +1053,14 @@
 
                             <div className="flex items-center gap-2">
                                 <button
+                                    onClick={askClearAllData}
+                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-red-950/45 hover:bg-red-950/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
+                                    title="Xóa toàn bộ bộ nhớ cache, hàng đợi và bắt đầu lại sạch sẽ"
+                                >
+                                    <i className="fa-solid fa-trash-can"></i>
+                                    <span className="hidden sm:inline">Dọn sạch dữ liệu</span>
+                                </button>
+                                <button
                                     onClick={saveProgressJSON}
                                     className="flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
                                     title="Lưu toàn bộ tiến trình hiện tại thành tệp JSON"
@@ -1375,6 +1387,34 @@
                                                 </div>
                                             )}
 
+                                            {}
+                                            {activeImage?.error && (
+                                                <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
+                                                    <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
+                                                        <i className="fa-solid fa-triangle-exclamation text-xl"></i>
+                                                    </div>
+                                                    <h3 className="text-sm font-bold text-red-400 mb-1">Không thể xử lý hình ảnh này</h3>
+                                                    <p className="text-[11px] text-slate-400 mb-3 max-w-sm">Mô tả chi tiết mã phản hồi lỗi hệ thống:</p>
+                                                    <div className="bg-slate-900 border border-slate-850 rounded-lg p-3 max-w-lg w-full mb-4 text-left overflow-auto max-h-[160px]">
+                                                        <p className="text-[10.5px] text-red-300 font-mono whitespace-pre-wrap break-words">{activeImage.error}</p>
+                                                    </div>
+                                                    <div className="flex gap-2.5">
+                                                        <button
+                                                            onClick={() => processSingleImage(activeImage.id)}
+                                                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+                                                        >
+                                                            <i className="fa-solid fa-rotate-right"></i> Thử lại
+                                                        </button>
+                                                        <button
+                                                            onClick={() => updateActiveImageProp('error', null)}
+                                                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                                                        >
+                                                            Bỏ qua lỗi
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="w-full h-full flex items-center justify-center overflow-hidden">
                                                 <div 
                                                     className="relative w-full h-full flex items-center justify-center select-none"
@@ -1696,9 +1736,13 @@
                                 <div className="text-red-500 bg-red-500/10 w-10 h-10 rounded-full flex items-center justify-center mb-3">
                                     <i className="fa-solid fa-trash text-lg"></i>
                                 </div>
-                                <h3 className="text-sm font-bold text-white mb-1.5">Xác nhận xóa hình</h3>
+                                <h3 className="text-sm font-bold text-white mb-1.5">
+                                    {deleteConfirm.type === 'clear_all' ? 'Xác nhận xóa sạch dữ liệu' : 'Xác nhận xóa hình'}
+                                </h3>
                                 <p className="text-xs text-slate-400 mb-4 leading-normal">
-                                    {deleteConfirm.type === 'queue' 
+                                    {deleteConfirm.type === 'clear_all'
+                                        ? 'Bạn có chắc chắn muốn dọn sạch toàn bộ dữ liệu lưu trữ tạm thời? Thao tác này sẽ giải phóng hàng đợi, xóa sạch bộ nhớ cache và làm trống app hoàn toàn.'
+                                        : deleteConfirm.type === 'queue' 
                                         ? 'Bạn có chắc chắn muốn xóa hình ảnh này khỏi hàng đợi? Tiến trình chưa làm cho hình này sẽ bị hủy.' 
                                         : 'Bạn có chắc chắn muốn xóa bản ghi này khỏi lịch sử đã làm? Điều này không làm ảnh hưởng tới hàng đợi.'}
                                 </p>
@@ -1711,7 +1755,15 @@
                                     </button>
                                     <button 
                                         onClick={() => {
-                                            if (deleteConfirm.type === 'queue') {
+                                            if (deleteConfirm.type === 'clear_all') {
+                                                localStorage.removeItem('ai_enhancer_local_backup');
+                                                setImagesList([]);
+                                                setActiveImageId(null);
+                                                setHistoryList([]);
+                                                setError('');
+                                                setMoodboardImages([]);
+                                                setCrossRefImages([]);
+                                            } else if (deleteConfirm.type === 'queue') {
                                                 deleteImage(deleteConfirm.id);
                                             } else if (deleteConfirm.type === 'history') {
                                                 deleteHistoryItem(deleteConfirm.id);
@@ -1720,7 +1772,7 @@
                                         }}
                                         className="px-4 py-2 text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
                                     >
-                                        Đồng ý xóa
+                                        Đồng ý
                                     </button>
                                 </div>
                             </div>
